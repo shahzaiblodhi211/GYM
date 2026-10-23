@@ -24,6 +24,7 @@ self.addEventListener("fetch", (event) => {
   const cacheable =
     request.mode === "navigate" ||
     url.pathname.startsWith("/_next/static/") ||
+    url.pathname.startsWith("/form/") ||
     url.pathname.startsWith("/icon") ||
     url.pathname.startsWith("/apple-touch-icon") ||
     url.pathname.endsWith(".png") ||

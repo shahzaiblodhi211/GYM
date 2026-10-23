@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
+import { FORM_CLIPS, type FormClip } from "@/lib/form"
 import { DAYS, getDay, prettyReps } from "@/lib/program"
 import { addPlate, formatWeight, formatWeightUnit, parseDisplayWeight, subPlate } from "@/lib/strength"
 import { doneSetCount, lastPerformance, suggest } from "@/lib/training"
@@ -178,7 +179,18 @@ function ActiveWorkout({
         )}
       </header>
 
-      <div className="mt-8 flex items-start justify-between gap-4">
+      {FORM_CLIPS[exercise.id] ? (
+        <div className="relative mt-4 overflow-hidden rounded-[1.4rem] bg-black">
+          <FormVideo key={exercise.id} clip={FORM_CLIPS[exercise.id]} label={`${exercise.name} form`} />
+          {restLeft !== null ? (
+            <span className="absolute top-3 left-3 rounded-full bg-black/70 px-2.5 py-1 font-display text-sm">
+              {restLeft > 0 ? clock(restLeft) : "Go"}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="mt-5 flex items-start justify-between gap-4">
         <div>
           <p className="text-sm" style={{ color: exercise.muscleColor }}>
             {exercise.muscle}
@@ -384,6 +396,160 @@ function RoundButton({
     >
       {children}
     </button>
+  )
+}
+
+function FormVideo({ clip, label }: { clip: FormClip; label: string }) {
+  const [failed, setFailed] = useState(false)
+  const [paused, setPaused] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const bounds = useRef(clip)
+  const pausedRef = useRef(false)
+  const scrubbing = useRef(false)
+  bounds.current = clip
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    let frame = 0
+    let jumping = false
+    pausedRef.current = false
+    setPaused(false)
+    setProgress(0)
+    const watch = () => {
+      const { start, end } = bounds.current
+      if (
+        !jumping &&
+        !pausedRef.current &&
+        !scrubbing.current &&
+        video.readyState >= 1 &&
+        video.currentTime >= end &&
+        video.currentTime > start
+      ) {
+        jumping = true
+        video.style.visibility = "hidden"
+        video.currentTime = start
+      }
+      frame = requestAnimationFrame(watch)
+    }
+    const onSeeked = () => {
+      jumping = false
+      video.style.visibility = "visible"
+      if (!pausedRef.current && !scrubbing.current && video.paused) video.play().catch(() => {})
+    }
+    video.addEventListener("seeked", onSeeked)
+    frame = requestAnimationFrame(watch)
+    return () => {
+      cancelAnimationFrame(frame)
+      video.removeEventListener("seeked", onSeeked)
+    }
+  }, [clip.src])
+
+  function toggle() {
+    const video = videoRef.current
+    if (!video) return
+    if (video.paused) {
+      pausedRef.current = false
+      setPaused(false)
+      video.play().catch(() => {})
+    } else {
+      pausedRef.current = true
+      setPaused(true)
+      video.pause()
+    }
+  }
+
+  function place(event: ReactPointerEvent<HTMLDivElement>) {
+    const video = videoRef.current
+    if (!video) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width))
+    const { start, end } = bounds.current
+    video.currentTime = start + ratio * (end - start)
+    setProgress(ratio)
+  }
+
+  if (failed) {
+    return <img src={clip.poster} alt={label} className="mx-auto h-[22rem] w-full object-contain" />
+  }
+  return (
+    <div className="relative">
+      <video
+        ref={videoRef}
+        className="mx-auto h-[22rem] w-full object-contain"
+        src={clip.src}
+        poster={clip.poster}
+        muted
+        playsInline
+        autoPlay
+        preload="metadata"
+        aria-label={label}
+        onClick={toggle}
+        onError={() => setFailed(true)}
+        onLoadedMetadata={(event) => {
+          const video = event.currentTarget
+          if (clip.start > 0) video.style.visibility = "hidden"
+          video.currentTime = clip.start
+        }}
+        onTimeUpdate={(event) => {
+          if (scrubbing.current) return
+          const { start, end } = bounds.current
+          const span = Math.max(end - start, 0.1)
+          setProgress(Math.min(1, Math.max(0, (event.currentTarget.currentTime - start) / span)))
+        }}
+        onEnded={(event) => {
+          const video = event.currentTarget
+          video.style.visibility = "hidden"
+          video.currentTime = clip.start
+        }}
+      />
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label={paused ? "Play" : "Pause"}
+        className="absolute bottom-3 left-3 flex h-10 w-10 items-center justify-center rounded-full bg-black/70"
+      >
+        {paused ? <PlayIcon /> : <PauseIcon />}
+      </button>
+      <div
+        className="absolute inset-x-16 bottom-3 flex h-10 items-center"
+        onPointerDown={(event) => {
+          scrubbing.current = true
+          event.currentTarget.setPointerCapture(event.pointerId)
+          place(event)
+        }}
+        onPointerMove={(event) => {
+          if (scrubbing.current) place(event)
+        }}
+        onPointerUp={() => {
+          scrubbing.current = false
+        }}
+        onPointerCancel={() => {
+          scrubbing.current = false
+        }}
+      >
+        <div className="relative h-1 w-full rounded-full bg-white/25">
+          <div className="h-full rounded-full bg-white" style={{ width: `${progress * 100}%` }} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PlayIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="ml-0.5 h-5 w-5 fill-white" aria-hidden="true">
+      <path d="M8 5v14l11-7z" />
+    </svg>
+  )
+}
+
+function PauseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-white" aria-hidden="true">
+      <path d="M6 5h4v14H6zM14 5h4v14h-4z" />
+    </svg>
   )
 }
 

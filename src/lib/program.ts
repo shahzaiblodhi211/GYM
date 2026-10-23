@@ -84,7 +84,7 @@ export const DAYS: WorkoutDay[] = [
       },
       {
         id: "rope-pushdown",
-        name: "Triceps Pushdown (Rope)",
+        name: "Triceps Pushdown",
         short: "Pushdown",
         muscle: "Triceps",
         muscleColor: triceps,
