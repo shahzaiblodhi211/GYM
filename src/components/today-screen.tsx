@@ -6,6 +6,7 @@ import { DAYS, getDay, getExercise, MISS_REASONS, nextDayId } from "@/lib/progra
 import { comebackWeight, formatKept, formatWeight, retainedFraction } from "@/lib/strength"
 import { forecastIds, headlineFor, lastPerformance, mostRecentSession } from "@/lib/training"
 import type { DayId, Draft, Store, Unit } from "@/lib/types"
+import { InstallHint } from "@/components/pwa"
 import { cx } from "@/components/ui"
 
 type TodayProps = {
@@ -65,6 +66,8 @@ export function TodayScreen({ store, draft, onStart, onResume, onDiscard, onUnit
           ))}
         </div>
       </header>
+
+      <InstallHint />
 
       <div className={cx("mt-8", sparse && "flex flex-1 flex-col justify-center")}>
       <div className="grid grid-cols-3 gap-2">
