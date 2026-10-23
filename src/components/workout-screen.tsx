@@ -139,18 +139,19 @@ function ActiveWorkout({
     updateExercise(exercise.id, (sets) => sets.map((set, i) => (i === activeSet ? { ...set, done: nextDone } : set)))
     if (!nextDone) return
     setRestLeft(75)
+    const loggedWeight = latest.weightKg
     const sets = liveRef.current.exercises.find((item) => item.exerciseId === exercise.id)?.sets ?? []
     const upcoming = sets.findIndex((set, i) => i > activeSet && !set.done)
-    if (upcoming >= 0) setActiveSet(upcoming)
-    else if (index < day.exercises.length - 1) goTo(index + 1)
+    if (upcoming >= 0) {
+      updateExercise(exercise.id, (nextSets) =>
+        nextSets.map((set, i) => (i === upcoming ? { ...set, weightKg: loggedWeight } : set)),
+      )
+      setWeightText(null)
+      setActiveSet(upcoming)
+    } else if (index < day.exercises.length - 1) goTo(index + 1)
   }
 
   if (!block || !current) return null
-
-  const target =
-    suggestion.weightKg > 0
-      ? `${suggestion.mode === "up" ? "↑ " : suggestion.mode === "rebuild" ? "↓ " : ""}${formatWeight(suggestion.weightKg, store.unit)}`
-      : "Set weight"
 
   const clip = FORM_CLIPS[exercise.id]
 
@@ -288,156 +289,143 @@ function ActiveWorkout({
         <span />
       </div>
 
-      <div className="mt-5 flex items-start justify-between gap-4">
+      <div className="mt-6 flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm" style={{ color: exercise.muscleColor }}>
-            {exercise.muscle}
+          <h1 className="text-xl font-medium">{exercise.name}</h1>
+          <p className="mt-1 text-sm text-muted">
+            {exercise.muscle} · {exercise.sets} × {prettyReps(exercise.reps)}
+            {lastSet ? ` · last ${formatWeight(lastSet.weightKg, store.unit)}×${lastSet.reps}` : ""}
           </p>
-          <h1 className="mt-1 font-display text-[2.6rem] uppercase leading-[0.9]">{exercise.name}</h1>
         </div>
-        <button type="button" onClick={() => setCueOpen((open) => !open)} className="mt-1 h-9 w-9 shrink-0 rounded-full bg-white/6 text-sm text-muted" aria-label="Form cue">
+        <button type="button" onClick={() => setCueOpen((open) => !open)} className="h-9 w-9 shrink-0 rounded-full bg-[#1c1c1e] text-sm text-muted" aria-label="Form cue">
           i
         </button>
       </div>
-      <p className="mt-3 text-sm text-muted">
-        {exercise.sets} × {prettyReps(exercise.reps)}
-        <span className="mx-2 text-white/20">/</span>
-        <span style={{ color: day.accent }}>{target}</span>
-        {lastSet ? <span> · last {formatWeight(lastSet.weightKg, store.unit)}×{lastSet.reps}</span> : null}
-      </p>
       {cueOpen ? <p className="mt-3 text-sm leading-5 text-muted">{exercise.cue}</p> : null}
       {hint ? <p className="mt-3 text-sm text-miss">{hint}</p> : null}
 
-      <div className="mt-8 flex items-center justify-between">
-        <RoundButton
-          label={`Decrease ${store.unit}`}
-          onClick={() => {
-            tap()
-            setWeightText(null)
-            patchSet((set) => ({ ...set, weightKg: subPlate(set.weightKg, exercise.step, store.unit), done: false }))
-          }}
-        >
-          −
-        </RoundButton>
-        <label className="text-center">
-          <input
-            inputMode="decimal"
-            aria-label={store.unit}
-            value={weightText ?? formatWeight(current.weightKg, store.unit)}
-            placeholder="0"
-            onFocus={() => setWeightText(formatWeight(current.weightKg, store.unit))}
-            onBlur={() => setWeightText(null)}
-            onChange={(event) => {
-              setWeightText(event.target.value)
-              const parsed = parseDisplayWeight(event.target.value, store.unit)
-              if (parsed === null) return
-              patchSet((set) => ({ ...set, weightKg: parsed, done: set.done && parsed > 0 && set.reps > 0 }))
-            }}
-            className="w-44 bg-transparent text-center font-display text-8xl leading-none outline-none placeholder:text-white/20"
-          />
-          <span className="mt-1 block text-xs tracking-[0.18em] text-muted uppercase">{store.unit}</span>
-        </label>
-        <RoundButton
-          label={`Increase ${store.unit}`}
-          accent={day.accent}
-          accentText={day.accentText}
-          onClick={() => {
-            tap()
-            setWeightText(null)
-            patchSet((set) => ({ ...set, weightKg: addPlate(set.weightKg, exercise.step, store.unit), done: false }))
-          }}
-        >
-          +
-        </RoundButton>
+      <div className="mt-8 grid grid-cols-2 gap-4">
+        <div>
+          <p className="text-center text-xs text-muted">{store.unit}</p>
+          <div className="mt-2 flex items-center justify-between">
+            <RoundButton
+              label={`Decrease ${store.unit}`}
+              onClick={() => {
+                tap()
+                setWeightText(null)
+                patchSet((set) => ({ ...set, weightKg: subPlate(set.weightKg, exercise.step, store.unit), done: false }))
+              }}
+            >
+              −
+            </RoundButton>
+            <input
+              inputMode="decimal"
+              aria-label={store.unit}
+              value={weightText ?? formatWeight(current.weightKg, store.unit)}
+              placeholder="0"
+              onFocus={() => setWeightText(formatWeight(current.weightKg, store.unit))}
+              onBlur={() => setWeightText(null)}
+              onChange={(event) => {
+                setWeightText(event.target.value)
+                const parsed = parseDisplayWeight(event.target.value, store.unit)
+                if (parsed === null) return
+                patchSet((set) => ({ ...set, weightKg: parsed, done: set.done && parsed > 0 && set.reps > 0 }))
+              }}
+              className="w-16 bg-transparent text-center text-4xl font-medium outline-none placeholder:text-white/20"
+            />
+            <RoundButton
+              label={`Increase ${store.unit}`}
+              onClick={() => {
+                tap()
+                setWeightText(null)
+                patchSet((set) => ({ ...set, weightKg: addPlate(set.weightKg, exercise.step, store.unit), done: false }))
+              }}
+            >
+              +
+            </RoundButton>
+          </div>
+        </div>
+        <div>
+          <p className="text-center text-xs text-muted">reps</p>
+          <div className="mt-2 flex items-center justify-between">
+            <RoundButton
+              label="Decrease reps"
+              onClick={() => {
+                tap()
+                patchSet((set) => ({ ...set, reps: Math.max(0, set.reps - 1), done: false }))
+              }}
+            >
+              −
+            </RoundButton>
+            <input
+              inputMode="numeric"
+              aria-label="reps"
+              value={current.reps ? String(current.reps) : ""}
+              placeholder="0"
+              onChange={(event) => {
+                const parsed = Number(event.target.value)
+                if (!Number.isFinite(parsed)) return
+                const reps = Math.max(0, Math.min(30, Math.round(parsed)))
+                patchSet((set) => ({ ...set, reps, done: set.done && set.weightKg > 0 && reps > 0 }))
+              }}
+              className="w-12 bg-transparent text-center text-4xl font-medium outline-none placeholder:text-white/20"
+            />
+            <RoundButton
+              label="Increase reps"
+              onClick={() => {
+                tap()
+                patchSet((set) => ({ ...set, reps: Math.min(30, set.reps + 1), done: false }))
+              }}
+            >
+              +
+            </RoundButton>
+          </div>
+        </div>
       </div>
 
-      <div className="mx-auto mt-6 flex w-40 items-center justify-between rounded-full bg-white/6 px-2 py-1">
-        <button
-          type="button"
-          aria-label="Decrease reps"
-          className="h-10 w-10 text-xl text-muted"
-          onClick={() => {
-            tap()
-            patchSet((set) => ({ ...set, reps: Math.max(0, set.reps - 1), done: false }))
-          }}
-        >
-          −
-        </button>
-        <input
-          inputMode="numeric"
-          aria-label="reps"
-          value={current.reps ? String(current.reps) : ""}
-          placeholder="0"
-          onChange={(event) => {
-            const parsed = Number(event.target.value)
-            if (!Number.isFinite(parsed)) return
-            const reps = Math.max(0, Math.min(30, Math.round(parsed)))
-            patchSet((set) => ({ ...set, reps, done: set.done && set.weightKg > 0 && reps > 0 }))
-          }}
-          className="w-12 bg-transparent text-center font-display text-3xl outline-none"
-        />
-        <button
-          type="button"
-          aria-label="Increase reps"
-          className="h-10 w-10 text-xl text-muted"
-          onClick={() => {
-            tap()
-            patchSet((set) => ({ ...set, reps: Math.min(30, set.reps + 1), done: false }))
-          }}
-        >
-          +
-        </button>
-      </div>
-
-      <div className="mt-8 grid grid-cols-4 gap-2">
+      <div className="mt-8">
         {block.sets.map((set, i) => (
           <button
             key={i}
             type="button"
             aria-pressed={set.done}
-            aria-label={`Set ${i + 1} done`}
+            aria-label={`Set ${i + 1}`}
             onClick={() => {
               setWeightText(null)
               setActiveSet(i)
             }}
-            className="h-16 rounded-2xl text-center"
-            style={
-              set.done
-                ? { background: day.accent, color: day.accentText }
-                : { background: i === activeSet ? "#2c2c2e" : "rgba(255,255,255,0.06)" }
-            }
+            className={cx("flex h-12 w-full items-center text-sm", i === activeSet ? "text-ink" : "text-muted")}
           >
-            <span className="font-display text-2xl leading-none">{set.weightKg ? formatWeight(set.weightKg, store.unit) : i + 1}</span>
+            <span className="w-14">Set {i + 1}</span>
+            <span className="flex-1 text-center tabular-nums">
+              {set.weightKg ? `${formatWeight(set.weightKg, store.unit)} × ${set.reps || "–"}` : "—"}
+            </span>
+            <span className="w-6 text-right">{set.done ? "✓" : ""}</span>
           </button>
         ))}
       </div>
 
       {restLeft !== null ? (
-        <button type="button" onClick={() => setRestLeft(null)} className="mt-6 block w-full text-left">
-          <span className="flex items-baseline justify-between">
-            <span className="font-display text-3xl leading-none">{restLeft > 0 ? clock(restLeft) : "Go"}</span>
-            <span className="text-xs text-muted">Skip rest</span>
+        <button type="button" onClick={() => setRestLeft(null)} className="mt-4 block w-full text-left">
+          <span className="flex items-center justify-between text-sm">
+            <span className="tabular-nums">{restLeft > 0 ? clock(restLeft) : "Go"}</span>
+            <span className="text-muted">Skip rest</span>
           </span>
-          <span className="mt-2 block h-1 overflow-hidden rounded-full bg-white/10">
-            <span className="block h-full" style={{ width: `${(restLeft / 75) * 100}%`, background: day.accent }} />
+          <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-[#2c2c2e]">
+            <span className="block h-full rounded-full bg-[#d0d0d0]" style={{ width: `${(restLeft / 75) * 100}%` }} />
           </span>
         </button>
       ) : null}
 
-      <div className="mt-6 grid grid-cols-[1fr_1.4fr_1fr] gap-2">
-        <button type="button" disabled={index === 0} onClick={() => goTo(index - 1)} className="h-14 rounded-2xl bg-white/6 text-sm disabled:opacity-30">
+      <div className="mt-8 grid grid-cols-[1fr_1.4fr_1fr] gap-2">
+        <button type="button" disabled={index === 0} onClick={() => goTo(index - 1)} className="h-12 rounded-full bg-[#1c1c1e] text-sm text-muted disabled:opacity-30">
           Back
         </button>
-        <button
-          type="button"
-          onClick={markSet}
-          className="h-14 rounded-2xl font-display text-xl uppercase"
-          style={{ background: day.accent, color: day.accentText }}
-        >
+        <button type="button" onClick={markSet} className="h-12 rounded-full bg-ink text-sm font-medium text-black">
           {current.done ? "Undo" : "Done"}
         </button>
         {confirming ? (
-          <button type="button" onClick={() => onSave(liveRef.current)} className="h-14 rounded-2xl bg-ink font-display text-xl uppercase text-black">
+          <button type="button" onClick={() => onSave(liveRef.current)} className="h-12 rounded-full bg-ink text-sm font-medium text-black">
             Save
           </button>
         ) : (
@@ -448,7 +436,7 @@ function ActiveWorkout({
               if (index < day.exercises.length - 1) goTo(index + 1)
               else setConfirming(true)
             }}
-            className="h-14 rounded-2xl bg-white/6 font-display text-xl uppercase disabled:opacity-30"
+            className="h-12 rounded-full bg-[#1c1c1e] text-sm disabled:opacity-30"
           >
             {index < day.exercises.length - 1 ? "Next" : "Save"}
           </button>
@@ -473,19 +461,7 @@ function ActiveWorkout({
   )
 }
 
-function RoundButton({
-  children,
-  onClick,
-  label,
-  accent,
-  accentText,
-}: {
-  children: string
-  onClick: () => void
-  label: string
-  accent?: string
-  accentText?: string
-}) {
+function RoundButton({ children, onClick, label }: { children: string; onClick: () => void; label: string }) {
   return (
     <button
       type="button"
@@ -494,8 +470,7 @@ function RoundButton({
         event.preventDefault()
         onClick()
       }}
-      className="flex h-16 w-16 items-center justify-center rounded-full text-3xl"
-      style={accent ? { background: accent, color: accentText } : { background: "rgba(255,255,255,0.06)" }}
+      className="flex h-11 w-11 items-center justify-center rounded-full bg-[#1c1c1e] text-xl text-muted"
     >
       {children}
     </button>
