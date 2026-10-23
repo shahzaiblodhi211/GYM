@@ -70,6 +70,12 @@ function ActiveWorkout({
   const [hint, setHint] = useState("")
   const [weightText, setWeightText] = useState<string | null>(null)
   const [restLeft, setRestLeft] = useState<number | null>(null)
+  const [pane, setPane] = useState<"clip" | "sets">("clip")
+  const [dragX, setDragX] = useState(0)
+  const [holdSets, setHoldSets] = useState(false)
+  const swipeRef = useRef<{ x: number; y: number; axis: "x" | "y" | null; dx: number } | null>(null)
+  const pulling = useRef(false)
+  const suppressClick = useRef(false)
 
   const exercise = day.exercises[index]
   const block = live.exercises.find((item) => item.exerciseId === exercise.id)
@@ -146,49 +152,141 @@ function ActiveWorkout({
       ? `${suggestion.mode === "up" ? "↑ " : suggestion.mode === "rebuild" ? "↓ " : ""}${formatWeight(suggestion.weightKg, store.unit)}`
       : "Set weight"
 
+  const clip = FORM_CLIPS[exercise.id]
+
+  function showPane(next: "clip" | "sets") {
+    if (next === pane && dragX === 0) return
+    pulling.current = false
+    setDragX(0)
+    setHoldSets(next === "clip")
+    setPane(next)
+  }
+
+  function swipeStart(event: ReactPointerEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement
+    if (target.closest("button, input, textarea, a, label, [data-noswipe]")) return
+    swipeRef.current = { x: event.clientX, y: event.clientY, axis: null, dx: 0 }
+  }
+
+  function swipeMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const start = swipeRef.current
+    if (!start) return
+    const dx = event.clientX - start.x
+    const dy = event.clientY - start.y
+    if (!start.axis) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return
+      start.axis = Math.abs(dx) > Math.abs(dy) * 1.15 ? "x" : "y"
+      if (start.axis !== "x") return
+      pulling.current = true
+      setHoldSets(true)
+      event.currentTarget.setPointerCapture(event.pointerId)
+    }
+    if (start.axis !== "x") return
+    const width = Math.min(window.innerWidth, 480)
+    const next = pane === "clip" ? Math.max(-width, Math.min(0, dx)) : Math.max(0, Math.min(width, dx))
+    start.dx = next
+    setDragX(next)
+  }
+
+  function swipeEnd() {
+    const start = swipeRef.current
+    swipeRef.current = null
+    if (!start || start.axis !== "x") return
+    pulling.current = false
+    if (Math.abs(start.dx) > 12) suppressClick.current = true
+    if (pane === "clip" && start.dx < -64) showPane("sets")
+    else if (pane === "sets" && start.dx > 64) showPane("clip")
+    else {
+      setDragX(0)
+      if (pane === "sets") setHoldSets(false)
+    }
+  }
+
+  const exerciseDots = (
+    <div className="flex items-center justify-center gap-1.5">
+      {day.exercises.map((item, itemIndex) => {
+        const loggedBlock = live.exercises.find((entry) => entry.exerciseId === item.id)
+        const complete = loggedBlock?.sets.every((set) => set.done) ?? false
+        return (
+          <button
+            key={item.id}
+            type="button"
+            aria-label={item.short}
+            onClick={() => goTo(itemIndex)}
+            className={cx("h-1.5 rounded-full", itemIndex === index ? "w-6" : "w-1.5")}
+            style={{ background: complete || itemIndex === index ? "#d0d0d0" : "rgba(255,255,255,0.22)" }}
+          />
+        )
+      })}
+    </div>
+  )
+
   return (
-    <div className="pt-[max(0.75rem,env(safe-area-inset-top))]">
-      <header className="flex items-center justify-between">
-        <p className="text-sm text-muted">
-          {index + 1} / {day.exercises.length}
-        </p>
-        <div className="flex gap-1.5">
-          {day.exercises.map((item, itemIndex) => {
-            const loggedBlock = live.exercises.find((entry) => entry.exerciseId === item.id)
-            const complete = loggedBlock?.sets.every((set) => set.done) ?? false
-            return (
-              <button
-                key={item.id}
-                type="button"
-                aria-label={item.short}
-                onClick={() => goTo(itemIndex)}
-                className={cx("h-1.5 rounded-full", itemIndex === index ? "w-6" : "w-1.5")}
-                style={{ background: complete || itemIndex === index ? day.accent : "rgba(255,255,255,0.16)" }}
-              />
-            )
-          })}
+    <div className="touch-pan-y" onPointerDown={swipeStart} onPointerMove={swipeMove} onPointerUp={swipeEnd} onPointerCancel={swipeEnd}>
+      <div className="fixed top-[max(0.65rem,env(safe-area-inset-top))] left-1/2 z-30 h-12 w-full max-w-[480px] -translate-x-1/2">
+        <div className="flex h-full items-center justify-center">
+          <ModePill pane={pane} onChange={showPane} />
         </div>
         {discardArmed ? (
-          <button type="button" onClick={onDiscard} className="text-sm text-miss">
+          <button type="button" onClick={onDiscard} className="absolute top-1/2 right-4 -translate-y-1/2 text-sm text-miss">
             Discard
           </button>
         ) : (
-          <button type="button" onClick={() => setDiscardArmed(true)} className="text-sm text-muted" aria-label="Discard workout">
-            Close
+          <button
+            type="button"
+            onClick={() => setDiscardArmed(true)}
+            className="absolute top-1/2 right-4 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-[#1c1c1e] text-muted"
+            aria-label="Discard workout"
+          >
+            <CloseIcon />
           </button>
         )}
-      </header>
+      </div>
 
-      {FORM_CLIPS[exercise.id] ? (
-        <div className="relative mt-4 overflow-hidden rounded-[1.4rem] bg-black">
-          <FormVideo key={exercise.id} clip={FORM_CLIPS[exercise.id]} label={`${exercise.name} form`} />
-          {restLeft !== null ? (
-            <span className="absolute top-3 left-3 rounded-full bg-black/70 px-2.5 py-1 font-display text-sm">
-              {restLeft > 0 ? clock(restLeft) : "Go"}
-            </span>
-          ) : null}
+      <div
+        className={cx(
+          "fixed inset-x-0 top-0 z-20 mx-auto h-[calc(100dvh-var(--nav-h))] max-w-[480px] touch-pan-y bg-black",
+          pane === "sets" && !pulling.current && "pointer-events-none",
+        )}
+        style={{
+          transform: `translateX(calc(${pane === "sets" ? "-100%" : "0px"} + ${dragX}px))`,
+          transition: pulling.current ? "none" : "transform 300ms cubic-bezier(0.22, 1, 0.36, 1)",
+        }}
+        onClickCapture={(event) => {
+          if (!suppressClick.current) return
+          suppressClick.current = false
+          event.preventDefault()
+          event.stopPropagation()
+        }}
+        onTransitionEnd={(event) => {
+          if (event.target !== event.currentTarget || event.propertyName !== "transform") return
+          if (pane === "clip" && dragX === 0) setHoldSets(false)
+        }}
+      >
+        {clip ? (
+          <FormVideo key={exercise.id} clip={clip} label={`${exercise.name} form`} fill active={pane === "clip"} />
+        ) : (
+          <div className="flex h-full items-center justify-center px-8 text-center text-sm text-muted">No clip for this exercise</div>
+        )}
+        {restLeft !== null ? (
+          <span className="absolute top-[max(4.6rem,calc(env(safe-area-inset-top)+3.6rem))] left-4 rounded-full bg-[#1c1c1e] px-2.5 py-1 font-display text-sm">
+            {restLeft > 0 ? clock(restLeft) : "Go"}
+          </span>
+        ) : null}
+        <div className="pointer-events-none absolute inset-x-0 bottom-16 flex flex-col items-center gap-2">
+          <p className="text-sm text-white/70">{exercise.name}</p>
+          <div className="pointer-events-auto">{exerciseDots}</div>
         </div>
-      ) : null}
+      </div>
+
+      <div className={cx("touch-pan-y pt-[calc(4.1rem+max(0.65rem,env(safe-area-inset-top)))]", pane === "clip" && !holdSets && "hidden")}>
+      <div className="grid grid-cols-[3rem_1fr_3rem] items-center">
+        <p className="text-sm text-muted">
+          {index + 1}/{day.exercises.length}
+        </p>
+        {exerciseDots}
+        <span />
+      </div>
 
       <div className="mt-5 flex items-start justify-between gap-4">
         <div>
@@ -302,8 +400,12 @@ function ActiveWorkout({
               setWeightText(null)
               setActiveSet(i)
             }}
-            className={cx("h-16 rounded-2xl text-center", i === activeSet && "ring-2 ring-white")}
-            style={set.done ? { background: day.accent, color: day.accentText } : { background: "rgba(255,255,255,0.06)" }}
+            className="h-16 rounded-2xl text-center"
+            style={
+              set.done
+                ? { background: day.accent, color: day.accentText }
+                : { background: i === activeSet ? "#2c2c2e" : "rgba(255,255,255,0.06)" }
+            }
           >
             <span className="font-display text-2xl leading-none">{set.weightKg ? formatWeight(set.weightKg, store.unit) : i + 1}</span>
           </button>
@@ -366,6 +468,7 @@ function ActiveWorkout({
           Use {formatWeightUnit(suggestion.weightKg, store.unit)}
         </button>
       ) : null}
+      </div>
     </div>
   )
 }
@@ -399,7 +502,7 @@ function RoundButton({
   )
 }
 
-function FormVideo({ clip, label }: { clip: FormClip; label: string }) {
+function FormVideo({ clip, label, fill = false, active = true }: { clip: FormClip; label: string; fill?: boolean; active?: boolean }) {
   const [failed, setFailed] = useState(false)
   const [paused, setPaused] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -407,7 +510,9 @@ function FormVideo({ clip, label }: { clip: FormClip; label: string }) {
   const bounds = useRef(clip)
   const pausedRef = useRef(false)
   const scrubbing = useRef(false)
+  const activeRef = useRef(active)
   bounds.current = clip
+  activeRef.current = active
 
   useEffect(() => {
     const video = videoRef.current
@@ -418,6 +523,10 @@ function FormVideo({ clip, label }: { clip: FormClip; label: string }) {
     setPaused(false)
     setProgress(0)
     const watch = () => {
+      if (!activeRef.current) {
+        frame = requestAnimationFrame(watch)
+        return
+      }
       const { start, end } = bounds.current
       if (
         !jumping &&
@@ -436,7 +545,7 @@ function FormVideo({ clip, label }: { clip: FormClip; label: string }) {
     const onSeeked = () => {
       jumping = false
       video.style.visibility = "visible"
-      if (!pausedRef.current && !scrubbing.current && video.paused) video.play().catch(() => {})
+      if (activeRef.current && !pausedRef.current && !scrubbing.current && video.paused) video.play().catch(() => {})
     }
     video.addEventListener("seeked", onSeeked)
     frame = requestAnimationFrame(watch)
@@ -445,6 +554,16 @@ function FormVideo({ clip, label }: { clip: FormClip; label: string }) {
       video.removeEventListener("seeked", onSeeked)
     }
   }, [clip.src])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    if (!active) {
+      video.pause()
+      return
+    }
+    if (!pausedRef.current) video.play().catch(() => {})
+  }, [active])
 
   function toggle() {
     const video = videoRef.current
@@ -471,13 +590,13 @@ function FormVideo({ clip, label }: { clip: FormClip; label: string }) {
   }
 
   if (failed) {
-    return <img src={clip.poster} alt={label} className="mx-auto h-[22rem] w-full object-contain" />
+    return <img src={clip.poster} alt={label} className={fill ? "h-full w-full object-contain" : "mx-auto h-[22rem] w-full object-contain"} />
   }
   return (
-    <div className="relative">
+    <div className={cx("relative", fill && "h-full")}>
       <video
         ref={videoRef}
-        className="mx-auto h-[22rem] w-full object-contain"
+        className={fill ? "h-full w-full touch-pan-y object-contain" : "mx-auto h-[22rem] w-full object-contain"}
         src={clip.src}
         poster={clip.poster}
         muted
@@ -513,7 +632,9 @@ function FormVideo({ clip, label }: { clip: FormClip; label: string }) {
         {paused ? <PlayIcon /> : <PauseIcon />}
       </button>
       <div
+        data-noswipe
         className="absolute inset-x-16 bottom-3 flex h-10 items-center"
+        style={{ touchAction: "none" }}
         onPointerDown={(event) => {
           scrubbing.current = true
           event.currentTarget.setPointerCapture(event.pointerId)
@@ -549,6 +670,64 @@ function PauseIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5 fill-white" aria-hidden="true">
       <path d="M6 5h4v14H6zM14 5h4v14h-4z" />
+    </svg>
+  )
+}
+
+function ModePill({ pane, onChange }: { pane: "clip" | "sets"; onChange: (pane: "clip" | "sets") => void }) {
+  return (
+    <div className="relative flex w-fit rounded-full bg-[#1a1a1c] p-1">
+      <span
+        aria-hidden
+        className="absolute top-1 bottom-1 left-1 w-12 rounded-full bg-[#3a3a3c] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+        style={{ transform: pane === "sets" ? "translateX(100%)" : "translateX(0)" }}
+      />
+      <button
+        type="button"
+        aria-label="Clip"
+        aria-pressed={pane === "clip"}
+        onClick={() => onChange("clip")}
+        className={cx("relative z-10 flex h-10 w-12 items-center justify-center", pane === "clip" ? "text-ink" : "text-muted")}
+      >
+        <VideoIcon />
+      </button>
+      <button
+        type="button"
+        aria-label="Sets"
+        aria-pressed={pane === "sets"}
+        onClick={() => onChange("sets")}
+        className={cx("relative z-10 flex h-10 w-12 items-center justify-center", pane === "sets" ? "text-ink" : "text-muted")}
+      >
+        <SetsIcon />
+      </button>
+    </div>
+  )
+}
+
+function VideoIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
+      <rect x="3" y="6" width="18" height="12" rx="3" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M10 9.2v5.6l5-2.8z" fill="currentColor" />
+    </svg>
+  )
+}
+
+function SetsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
+      <path d="M8 7h11M8 12h11M8 17h7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx="4.5" cy="7" r="1.1" fill="currentColor" />
+      <circle cx="4.5" cy="12" r="1.1" fill="currentColor" />
+      <circle cx="4.5" cy="17" r="1.1" fill="currentColor" />
+    </svg>
+  )
+}
+
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+      <path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   )
 }

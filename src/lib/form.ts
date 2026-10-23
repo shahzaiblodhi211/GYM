@@ -10,7 +10,7 @@ export const FORM_CLIPS: Record<string, FormClip> = {
     src: "https://v1.pinimg.com/videos/iht/expMp4/99/6f/ac/996facdafb034d0cd67122b04eac6f24_720w.mp4",
     poster: "https://i.pinimg.com/736x/fa/b6/ff/fab6ffee63b7b5f77acfa8b9c4540e75.jpg",
     start: 0,
-    end: 38,
+    end: 40,
   },
   "incline-db-press": {
     src: "https://v1.pinimg.com/videos/iht/expMp4/72/16/4e/72164e72611b2f8c67aa6f167b2c9ce7_720w.mp4",

@@ -1,13 +1,29 @@
 "use client"
 
 import { useState } from "react"
-import { daysSince, formatPretty, relativeDay, todayKey, weekKeys, WEEK_LETTERS } from "@/lib/dates"
-import { DAYS, getDay, getExercise, MISS_REASONS, nextDayId } from "@/lib/program"
+import { daysSince, relativeDay, todayKey } from "@/lib/dates"
+import { DAYS, getDay, getExercise } from "@/lib/program"
 import { comebackWeight, formatKept, formatWeight, retainedFraction } from "@/lib/strength"
-import { forecastIds, headlineFor, lastPerformance, mostRecentSession } from "@/lib/training"
-import type { DayId, Draft, Store, Unit } from "@/lib/types"
+import { forecastIds, headlineFor, lastPerformance } from "@/lib/training"
+import type { DayId, Draft, Store } from "@/lib/types"
 import { InstallHint } from "@/components/pwa"
-import { cx } from "@/components/ui"
+
+const MUSCLES: Record<DayId, { src: string; label: string }[]> = {
+  push: [
+    { src: "/muscles/chest.png", label: "Chest" },
+    { src: "/muscles/triceps.png", label: "Triceps" },
+  ],
+  pull: [
+    { src: "/muscles/back.png", label: "Back" },
+    { src: "/muscles/biceps.png", label: "Biceps" },
+  ],
+  legs: [
+    { src: "/muscles/quads.png", label: "Quadriceps" },
+    { src: "/muscles/hamstrings.png", label: "Hamstrings" },
+    { src: "/muscles/glutes.png", label: "Glutes" },
+    { src: "/muscles/calves.png", label: "Calves" },
+  ],
+}
 
 type TodayProps = {
   store: Store
@@ -15,169 +31,65 @@ type TodayProps = {
   onStart: (dayId: DayId, date?: string) => void
   onResume: () => void
   onDiscard: () => void
-  onUnit: (unit: Unit) => void
-  onMiss: (date: string, reason: string) => void
 }
 
-export function TodayScreen({ store, draft, onStart, onResume, onDiscard, onUnit, onMiss }: TodayProps) {
+export function TodayScreen({ store, draft, onStart, onResume, onDiscard }: TodayProps) {
   const today = todayKey()
-  const latest = mostRecentSession(store.sessions)
-  const recommendedId = draft?.dayId ?? nextDayId(latest?.dayId ?? null)
-  const [picked, setPicked] = useState<DayId>(recommendedId)
-  const day = getDay(draft?.dayId ?? picked)
-  const previous = [...store.sessions]
-    .filter((session) => session.dayId === day.id)
-    .sort((a, b) => b.date.localeCompare(a.date) || b.completedAt.localeCompare(a.completedAt))[0]
-  const [missOpen, setMissOpen] = useState(false)
   const [discardArmed, setDiscardArmed] = useState(false)
-  const [missError, setMissError] = useState("")
   const recent = [...store.sessions]
     .sort((a, b) => b.date.localeCompare(a.date) || b.completedAt.localeCompare(a.completedAt))
     .slice(0, 3)
-  const sparse = recent.length === 0 && forecastIds(store.sessions).length === 0
-
-  function saveMiss(reason: string) {
-    if (store.sessions.some((session) => session.date === today)) {
-      setMissError("Already trained today.")
-      return
-    }
-    onMiss(today, reason)
-    setMissOpen(false)
-    setMissError("")
-  }
 
   return (
-    <div
-      className={cx("pt-[max(1.25rem,env(safe-area-inset-top))]", sparse && "flex min-h-[calc(100dvh-var(--nav-h))] flex-col")}
-      style={{ background: `radial-gradient(80% 36% at 80% 0%, ${day.accent}33, transparent 62%)` }}
-    >
-      <header className="flex items-center justify-between">
-        <p className="text-sm text-muted">{formatPretty(today)}</p>
-        <div className="flex rounded-full bg-white/6 p-1">
-          {(["kg", "lb"] as const).map((unit) => (
-            <button
-              key={unit}
-              type="button"
-              onClick={() => onUnit(unit)}
-              className={cx("h-7 rounded-full px-2.5 text-xs", store.unit === unit ? "bg-ink text-black" : "text-muted")}
-            >
-              {unit}
-            </button>
-          ))}
-        </div>
-      </header>
-
+    <div className="pt-[max(1.25rem,env(safe-area-inset-top))]">
       <InstallHint />
 
-      <div className={cx("mt-8", sparse && "flex flex-1 flex-col justify-center")}>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="mt-5 flex flex-col gap-3">
         {DAYS.map((item) => {
-          const active = item.id === day.id
+          const muscles = MUSCLES[item.id]
+          const isDraft = draft?.dayId === item.id
+          const previous = [...store.sessions]
+            .filter((session) => session.dayId === item.id)
+            .sort((a, b) => b.date.localeCompare(a.date) || b.completedAt.localeCompare(a.completedAt))[0]
           return (
             <button
               key={item.id}
               type="button"
-              disabled={Boolean(draft)}
-              onClick={() => setPicked(item.id)}
-              className={cx("h-10 rounded-full text-sm", active ? "text-black" : "bg-white/8 text-muted")}
-              style={active ? { background: item.accent } : undefined}
+              onClick={() => (isDraft ? onResume() : onStart(item.id, today))}
+              className="bg-transparent text-left outline-none"
             >
-              {item.name}
+              <span className="flex items-baseline justify-between">
+                <span className="text-base font-medium">{item.name}</span>
+                <span className="text-xs text-muted">{isDraft ? "Resume" : `${item.exercises.length} exercises`}</span>
+              </span>
+              <span className="mt-2 grid grid-cols-2 gap-3">
+                {muscles.map((muscle) => (
+                  <span key={muscle.label} className="text-center">
+                    <img src={muscle.src} alt="" className="w-full" />
+                    <span className="mt-1.5 block text-[11px] text-[#bdbab4]">{muscle.label}</span>
+                  </span>
+                ))}
+              </span>
+              {previous ? <span className="mt-1 block text-xs text-muted">{headlineFor(previous, store.unit)}</span> : null}
             </button>
           )
         })}
       </div>
 
-      <h1 className="mt-7 font-display text-[4.75rem] uppercase leading-[0.8] tracking-tight">{day.name}</h1>
-      <div className="mt-4 flex flex-wrap gap-x-3 gap-y-1">
-        {day.focus.map((part) => (
-          <span key={part.label} className="flex items-center gap-1.5 text-sm text-muted">
-            <i className="h-1.5 w-1.5 rounded-full" style={{ background: part.color }} />
-            {part.label}
-          </span>
-        ))}
-      </div>
-
-      <div className="mt-8">
-        {draft ? (
-          <div className="flex flex-col gap-3">
-            <button
-              type="button"
-              onClick={onResume}
-              className="h-14 rounded-2xl font-display text-2xl uppercase tracking-wide"
-              style={{ background: day.accent, color: day.accentText }}
-            >
-              Resume
-            </button>
-            {discardArmed ? (
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setDiscardArmed(false)} className="h-11 rounded-2xl bg-white/6 text-sm">
-                  Keep
-                </button>
-                <button type="button" onClick={onDiscard} className="h-11 rounded-2xl text-sm text-miss">
-                  Discard
-                </button>
-              </div>
-            ) : (
-              <button type="button" onClick={() => setDiscardArmed(true)} className="h-10 text-sm text-muted">
-                Discard
-              </button>
-            )}
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => onStart(day.id, today)}
-            className="h-14 w-full rounded-2xl font-display text-2xl uppercase tracking-wide"
-            style={{ background: day.accent, color: day.accentText }}
-          >
-            Start
+      {draft && discardArmed ? (
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button type="button" onClick={() => setDiscardArmed(false)} className="h-11 rounded-2xl bg-white/6 text-sm">
+            Keep
           </button>
-        )}
-        {previous ? <p className="mt-3 text-center text-sm text-muted">{headlineFor(previous, store.unit)}</p> : null}
-      </div>
-      </div>
-
-      <section className={cx(sparse ? "pb-2" : "mt-10")}>
-        <div className="mb-3 flex items-center justify-between">
-          <p className="text-xs tracking-[0.16em] text-muted uppercase">Week</p>
-          <button type="button" onClick={() => setMissOpen((open) => !open)} className="text-xs text-muted">
-            {missOpen ? "Close" : "Missed"}
+          <button type="button" onClick={onDiscard} className="h-11 rounded-2xl text-sm text-miss">
+            Discard workout
           </button>
         </div>
-        <div className="grid grid-cols-7 gap-2">
-          {weekKeys(today).map((key, index) => {
-            const session = store.sessions.find((item) => item.date === key)
-            const miss = store.misses.find((item) => item.date === key)
-            const loggedDay = session ? getDay(session.dayId) : null
-            return (
-              <div key={key} className="flex flex-col items-center gap-2">
-                <span className="text-[10px] text-muted">{WEEK_LETTERS[index]}</span>
-                <span
-                  className={cx("h-8 w-full rounded-full", key === today && "ring-1 ring-white/50", !loggedDay && !miss && "bg-white/8")}
-                  style={
-                    loggedDay
-                      ? { background: loggedDay.accent }
-                      : miss
-                        ? { background: "#ff6b5a" }
-                        : undefined
-                  }
-                />
-              </div>
-            )
-          })}
-        </div>
-        {missOpen ? (
-          <div className="mt-4 flex flex-wrap gap-2">
-            {MISS_REASONS.map((reason) => (
-              <button key={reason} type="button" onClick={() => saveMiss(reason)} className="h-9 rounded-full bg-white/6 px-3 text-sm">
-                {reason}
-              </button>
-            ))}
-            {missError ? <p className="w-full text-sm text-miss">{missError}</p> : null}
-          </div>
-        ) : null}
-      </section>
+      ) : draft ? (
+        <button type="button" onClick={() => setDiscardArmed(true)} className="mt-3 h-10 w-full text-sm text-muted">
+          Discard workout
+        </button>
+      ) : null}
 
       <StrengthRow store={store} today={today} />
 

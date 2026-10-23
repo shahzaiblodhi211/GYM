@@ -64,8 +64,6 @@ export function GymApp() {
               onStart={start}
               onResume={() => setTab("train")}
               onDiscard={() => saveDraft(null)}
-              onUnit={(unit) => save({ ...store, unit })}
-              onMiss={(date, reason) => save(upsertMiss(store, { id: crypto.randomUUID(), date, reason }))}
             />
           ) : null}
           {tab === "train" ? (
@@ -117,7 +115,7 @@ export function GymApp() {
         </main>
         <nav className="fixed bottom-[max(0.7rem,env(safe-area-inset-bottom))] left-1/2 z-40 w-[calc(100%-1.5rem)] max-w-[420px] -translate-x-1/2">
           <div className="grid grid-cols-4 rounded-full border border-white/10 bg-black/80 p-1 shadow-[0_12px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl">
-            <NavButton label="Today" active={tab === "today"} onClick={() => setTab("today")}>
+            <NavButton label="Home" active={tab === "today"} onClick={() => setTab("today")}>
               <HomeIcon />
             </NavButton>
             <NavButton label="Log" active={tab === "train"} onClick={() => setTab("train")} dot={draftDay?.accent}>
